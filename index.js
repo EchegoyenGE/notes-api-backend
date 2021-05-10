@@ -1,65 +1,67 @@
+require('dotenv').config()
+
+require('./mongo.js')
+
 const express = require('express')
 const app = express()
 const cors = require('cors')
+const Note = require('./models/Note')
+const notFound = require('./middleware/notFound.js')
+const handleErrors = require('./middleware/handleErrors.js')
 
 app.use(cors())
 app.use(express.json())
-
-let notes = [
-  {
-    id: 1,
-    content: 'Me tengo que suscribir a @midudev en YouTube',
-    date: '2019-05-30T17:30:31.098Z',
-    important: true
-  },
-  {
-    id: 2,
-    content: 'Tengo que estudiar las clases del FullStack Bootcamp',
-    date: '2019-05-30T18:39:34.091Z',
-    important: false
-  },
-  {
-    id: 3,
-    content: 'Repasar los retos de JS de midudev',
-    date: '2019-05-30T19:20:14.298Z',
-    important: true
-  }
-]
-
-const generateId = () => {
-  const notesIds = notes.map(n => n.id)
-  const maxId = notesIds.length ? Math.max(...notesIds) : 0
-  const newId = maxId + 1
-  return newId
-}
 
 app.get('/', (request, response) => {
   response.send('<h1>Hello World!</h1>')
 })
 
-app.get('/api/notes', (request, response) => {
+app.get('/api/notes', async (request, response) => {
+  const notes = await Note.find({})
   response.json(notes)
 })
 
-app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const note = notes.find(note => note.id === id)
+app.get('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
 
-  if (note) {
-    return response.json(note)
-  } else {
-    response.status(404).end()
+  Note.findById(id).then(note => {
+    if (note) {
+      return response.json(note)
+    } else {
+      response.status(404).end()
+    }
+  }).catch(err => {
+    next(err)
+  })
+})
+
+app.put('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  const note = request.body
+
+  const newNoteInfo = {
+    content: note.content,
+    important: note.important
+  }
+
+  Note.findByIdAndUpdate(id, newNoteInfo, { new: true })
+    .then(result => {
+      response.json(result)
+    })
+    .catch(error => next(error))
+})
+
+app.delete('/api/notes/:id', async (request, response, next) => {
+  const { id } = request.params
+  try {
+    await Note.findByIdAndDelete(id)
+    response.status(204).end()
+  } catch (error) {
+    next(error)
   }
 })
 
-app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  notes = notes.filter(note => note.id !== id)
-
-  response.status(204).end()
-})
-
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', async (request, response, next) => {
   const note = request.body
 
   if (!note.content) {
@@ -68,19 +70,27 @@ app.post('/api/notes', (request, response) => {
     })
   }
 
-  const newNote = {
-    id: generateId(),
+  const newNote = new Note({
     content: note.content,
     date: new Date(),
-    import: note.important || false
+    important: note.important || false
+  })
+
+  try {
+    const savedNote = await newNote.save()
+    response.json(savedNote)
+  } catch (error) {
+    next(error)
   }
-
-  notes = notes.concat(newNote)
-
-  response.json(note)
 })
+
+app.use(notFound)
+
+app.use(handleErrors)
 
 const PORT = process.env.PORT || 3001
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
+
+module.exports = { app, server }

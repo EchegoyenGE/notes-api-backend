@@ -2,6 +2,6 @@ POST http://localhost:3001/api/notes
 Content-Type: application/json
 
 {
-  "content": "Suscríbete a @midudev",
+  "content": "Nota de gaston",
   "important": true
 }
